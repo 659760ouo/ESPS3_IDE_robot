@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <Arduino.h>
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "esp_camera.h"
@@ -846,4 +847,18 @@ void setupLedFlash() {
 #else
   log_i("LED flash is disabled -> LED_GPIO_NUM undefined");
 #endif
+}
+
+// Stop the camera and stream servers and clear their pointer references to prevent dangling pointers.
+void stopCameraServer() {
+    if (camera_httpd != NULL) {
+        if (httpd_stop(camera_httpd) == ESP_OK) {
+            camera_httpd = NULL; // Clear pointer memory reference
+        }
+    }
+    if (stream_httpd != NULL) {
+        if (httpd_stop(stream_httpd) == ESP_OK) {
+            stream_httpd = NULL; // Clear pointer memory reference
+        }
+    }
 }

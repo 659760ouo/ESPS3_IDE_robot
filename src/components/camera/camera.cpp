@@ -1,10 +1,21 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <Arduino.h> // for cpp to it as ino
+#include "camera.h"
+
+#include "driver/ledc.h" // Needed to manually kill the camera clock timer
+#include "camera_pinout.h" // Ensure your camera pin macros are included here
 
 // ===========================
 // Select camera model in board_config.h
 // ===========================
 #include "board_config.h"
+
+
+// Customized pinout
+#include "camera_pinout.h"
+
+ // if you run local folder with app_httpd.cpp , then no need , but we run in IOT_app, thus it won't has a first order compilation for cpp
 
 // ===========================
 // Enter your WiFi credentials
@@ -12,36 +23,17 @@
 const char *ssid = "Tenda_wifi_2.4GHz";
 const char *password = "91297386";
 
-void startCameraServer();
-void setupLedFlash();
 
-void setup() {
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
 
+
+void camera_init() {
+  
+  
+  void setupLedFlash();
 
 
 
   camera_config_t config;
-
-
-  #define PWDN_GPIO_NUM -1
-  #define RESET_GPIO_NUM -1
-  #define XCLK_GPIO_NUM 15
-  #define SIOD_GPIO_NUM 4
-  #define SIOC_GPIO_NUM 5
-  #define VSYNC_GPIO_NUM 6
-  #define HREF_GPIO_NUM 7
-  #define PCLK_GPIO_NUM 13
-  #define Y2_GPIO_NUM 11
-  #define Y3_GPIO_NUM 9
-  #define Y4_GPIO_NUM 8
-  #define Y5_GPIO_NUM 10
-  #define Y6_GPIO_NUM 12
-  #define Y7_GPIO_NUM 18
-  #define Y8_GPIO_NUM 17
-  #define Y9_GPIO_NUM 16
 
 
 
@@ -141,14 +133,39 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected");
 
-  startCameraServer();
-
+  // startCameraServer(); // We will start the camera server in the handler when the user presses the button to switch to camera mode, to save resources when not in use
+  
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
   Serial.println("' to connect");
 }
 
-void loop() {
-  // Do nothing. Everything is done in another task by the web server
-  delay(10000);
+
+
+void camera_deinit() {
+    // 1. Uninstall the outer camera driver layer
+    esp_camera_fb_return(NULL); // Clear the camera frame buffer to free up memory for the LCD animation
+    esp_camera_deinit(); 
+
+
+    // 2. FORCE KILL THE CLOCK SIGNAL (CRITICAL STEP)
+    // The camera driver uses LEDC Channel 0 / Timer 0 to feed the sensor XCLK line.
+    // If you don't stop this timer, it loops and pollutes your LCD data lines.
+    ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0); 
+    
+    // 3. ISOLATE THE HARDWARE PINS
+    // Turn the shared camera lines into safe inputs so they cannot bleed 
+    // current or signal noise into your LCD animation streams.
+    pinMode(XCLK_GPIO_NUM, INPUT);
+    pinMode(PCLK_GPIO_NUM, INPUT);
+    pinMode(VSYNC_GPIO_NUM, INPUT);
+    pinMode(HREF_GPIO_NUM, INPUT);
+    
+    // Also disconnect the primary data line pins
+    pinMode(Y2_GPIO_NUM, INPUT);
+    pinMode(Y3_GPIO_NUM, INPUT);
+    pinMode(Y4_GPIO_NUM, INPUT);
+    pinMode(Y5_GPIO_NUM, INPUT);
+
+    Serial.println("Camera hardware layers stripped. Bus is clean for LCD animations.");
 }
