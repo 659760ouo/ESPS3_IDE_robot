@@ -4,7 +4,11 @@
 #include <HTTPClient.h> 
 #include <Arduino.h>
 #include <ArduinoJson.h> 
+#include <time.h>
 
+
+
+// CRITICAL: These MUST be global variables outside the function
 
 const char* weather_typeA = "flw"; // "flw" for current weather, "rhrread" for 3-hourly forecast, etc. (based on HKO API documentation)
 const char* weather_typeB = "fnd"; // "fnd" for 9-day forecast, etc. (based on HKO API documentation)
@@ -68,13 +72,11 @@ HKWeather getHKWeather() {
             // FIXED: Set target station filter name to "Yuen Long"
             JsonArray tempData = doc["temperature"]["data"];
             for (JsonObject item : tempData) {
-                if (item["place"].as<String>() == "Yuen Long") {
+                if (item["place"].as<String>() == "Yuen Long Park") {
                     weather.temperature = String(item["value"].as<int>()) + "°C";
                     break;
                 }
 
-                
-                
             }
             //test
            
@@ -124,6 +126,23 @@ HKWeather getHKWeather() {
 }
 
 String getHKTime() {
-    // Keep your local clock logic here...
-    return "12:00"; 
+    // struct tm timeinfo;
+    // static char lastValidTime[32] = "Syncing..."; // Stores the last good time string
+    
+    // // Read the internal clock registers
+    // if (!getLocalTime(&timeinfo)) {
+    //     // REMOVED: Serial.println from here so it doesn't spam your loop 30 times a second
+    //     return String(lastValidTime); // Fallback to the last known valid clock state
+    // }
+    
+    // char timeBuffer[32];
+    // strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    
+    // // Save this current string as the new baseline fallback
+    // strncpy(lastValidTime, timeBuffer, sizeof(lastValidTime));
+    
+    // return String(timeBuffer);
+    return String("2024-06-01 12:00:00"); // Placeholder static time for testing without RTC setup
 }
+
+
