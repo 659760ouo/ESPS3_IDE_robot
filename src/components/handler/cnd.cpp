@@ -6,6 +6,8 @@
 #include "esp_camera.h"
 #include "../display/lcd/weather.h"
 
+
+
 enum AppMode { MODE_ANIMATION, MODE_CAMERA, MODE_STARTUP };
 AppMode currentMode = MODE_STARTUP; 
 

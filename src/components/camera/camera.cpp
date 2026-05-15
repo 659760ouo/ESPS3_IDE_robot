@@ -1,5 +1,5 @@
 #include "esp_camera.h"
-#include <WiFi.h>
+
 #include <Arduino.h> // for cpp to it as ino
 #include "camera.h"
 
@@ -11,6 +11,7 @@
 // ===========================
 #include "board_config.h"
 
+#include "../common/wifi.h" // For WiFi connection function
 
 // Customized pinout
 #include "camera_pinout.h"
@@ -20,9 +21,6 @@
 // ===========================
 // Enter your WiFi credentials
 // ===========================
-const char *ssid = "Tenda_wifi_2.4GHz";
-const char *password = "91297386";
-
 
 
 
@@ -122,22 +120,6 @@ void camera_init() {
   setupLedFlash();
 #endif
 
-  WiFi.begin(ssid, password);
-  WiFi.setSleep(false);
-
-  Serial.print("WiFi connecting");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");
-
-  // startCameraServer(); // We will start the camera server in the handler when the user presses the button to switch to camera mode, to save resources when not in use
-  
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
 }
 
 
