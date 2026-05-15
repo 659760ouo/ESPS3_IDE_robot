@@ -7,9 +7,7 @@ const int switchPin = 40; // GPIO pin for the physical switch
 
 void setup() {
   Serial.begin(115200);
-  lcd_init(); // Initialize the LCD display     
-  
-  camera_init(); // Initialize the camera (WiFi connection will be established here)
+ 
   pinMode(switchPin, INPUT_PULLUP); // Set the switch pin as input with pull-up resistor
   
   
