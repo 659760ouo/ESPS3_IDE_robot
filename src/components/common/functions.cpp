@@ -1,45 +1,33 @@
 #include "functions.h"
 #include <WiFi.h> 
-#include <WiFiClientSecure.h> // FIXED: Added for secure HTTPS connections
+#include <WiFiClientSecure.h> 
 #include <HTTPClient.h> 
 #include <Arduino.h>
 #include <ArduinoJson.h> 
 #include <time.h>
 
+// ==========================================
+// CRITICAL: GLOBAL VARIABLES FOR CUSTOM REAL-TIME CLOCK
+// ==========================================
+struct tm myClock = {0, 0, 0, 1, 0, 126, 0, 0, 0}; // struct tm format: sec, min, hour, mday, mon, year (since 1900), wday, yday, isdst
+bool clockSynced = false;                         // Flags when HKO API initializes time
+unsigned long lastClockUpdate = 0;                // High-precision millisecond modifier anchor
 
-
-// CRITICAL: These MUST be global variables outside the function
-
-const char* weather_typeA = "flw"; // "flw" for current weather, "rhrread" for 3-hourly forecast, etc. (based on HKO API documentation)
-const char* weather_typeB = "fnd"; // "fnd" for 9-day forecast, etc. (based on HKO API documentation)
-const char* weather_typeC = "rhrread"; // "rhrread" for current forecast, etc. (based on HKO API documentation)
-const char* weather_typeD = "warnsum"; // "warnsummary" for weather warnings, etc. (based on HKO API documentation)
-const char* weather_typeE = "warningInfo"; // "warningInfo" for detailed weather warnings, etc. (based on HKO API documentation)
-const char* weather_typeF = "swt"; // "swt" for sunrise/sunset times, etc. (based on HKO API documentation)
-
-
-//Added the required query parameters (?dataType=rhrread&lang=en) from Page 6 of the handbook
+const char* weather_typeC = "rhrread"; // "rhrread" for current forecast
 String base_url = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=";
-
-//language = en, english, tc for traditional chinese, sc for simplified chinese
-String HKO_WEATHER_URL = base_url + String(weather_typeC) + "&lang=en"; // Using the "rhrread" endpoint for current weather forecast as an example, you can switch to other endpoints by changing weather_typeC to A, B, D, E, or F based on your needs and the HKO API documentation. The "rhrread" endpoint provides real-time weather data which is suitable for our LCD display updates.
-
-
-
+String HKO_WEATHER_URL = base_url + String(weather_typeC) + "&lang=en";
 
 HKWeather getHKWeather() {
     HKWeather weather; 
-
-
+    weather.valid = false;
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi not connected. Cannot fetch weather data.");
         return weather;
     }
 
-    // FIXED: Changed to WiFiClientSecure to allow communication over HTTPS
     WiFiClientSecure client; 
-    client.setInsecure(); // Required on ESP32-S3 to bypass complex certificate verification
+    client.setInsecure(); // Required on ESP32 devices to bypass root CA verification layout
     
     HTTPClient http; 
 
@@ -52,64 +40,80 @@ HKWeather getHKWeather() {
 
     int code = http.GET();
     if (code == HTTP_CODE_OK) {
+
+        int timeout = 3000; // 3 seconds timeout loop to let secure connection buffer catch up
+        while (http.getStream().available() == 0 && timeout > 0) {
+            delay(10);
+            timeout -= 10;
+        }
+
         String payload = http.getString();
         Serial.println("Weather data received:");
-
-        //Print the full set data for debugging - the HKO response contains multiple nested objects and arrays, so this helps us understand the structure for parsing
         Serial.println(payload); 
         
-        // Increased size to 2048 bytes because the full HKO response contains arrays for multiple stations
-        DynamicJsonDocument doc(6144); 
+        DynamicJsonDocument doc(16384); // Allocate a larger buffer for the expected JSON payload size
         DeserializationError err = deserializeJson(doc, payload);
         
         if (!err) {
             weather.valid = true; 
 
+            // ==========================================
+            // API CLOCK OVERRIDE CAPTURE
+            // ==========================================
             if (doc.containsKey("updateTime")) {
-                weather.updateTime = doc["updateTime"].as<String>();
+                String uTime = doc["updateTime"].as<String>();
+                weather.updateTime = uTime;
+
+                // Parses standard HKO ISO format: "YYYY-MM-DDTHH:MM:SS+08:00"
+                int y = 0, m = 0, d = 0, hr = 0, min = 0, sec = 0;
+                if (sscanf(uTime.c_str(), "%d-%d-%dT%d:%d:%d", &y, &m, &d, &hr, &min, &sec) == 6) {
+                    
+                    myClock.tm_year = y - 1900; // tm format structural rules (years since 1900)
+                    myClock.tm_mon = m - 1;     // tm format structural rules (months 0-11)
+                    myClock.tm_mday = d;
+                    myClock.tm_hour = hr;
+                    myClock.tm_min = min;
+                    myClock.tm_sec = sec;
+                    
+                    clockSynced = true;         
+                    lastClockUpdate = millis(); // Snap modifier tracking to current MCU execution state
+                    Serial.println(">> Local Clock Successfully Synced with HKO Data Engine! <<");
+                }
             }
 
-            // FIXED: Set target station filter name to "Yuen Long"
+            // Target station filter name "Yuen Long Park"
             JsonArray tempData = doc["temperature"]["data"];
             for (JsonObject item : tempData) {
                 if (item["place"].as<String>() == "Yuen Long Park") {
                     weather.temperature = String(item["value"].as<int>()) + "°C";
                     break;
                 }
-
             }
-            //test
-           
 
-            // FIXED: Set target station filter name to "Yuen Long"
+            // Target station filter name "Hong Kong Observatory"
             JsonArray humiData = doc["humidity"]["data"];
             for (JsonObject item : humiData) {
                 if (item["place"].as<String>() == "Hong Kong Observatory") {
                     weather.humidity = String(item["value"].as<int>()) + "%";
                     break;
                 }
-                
-                
-                
             }
 
-            //test
-            
-            
-
-
-            // FIXED: Replaced "indicator" with the documented "icon" array lookup from Page 9
+            // Read array index cleanly via HKO spec sheet map
             if (doc.containsKey("icon") && doc["icon"].is<JsonArray>()) {
-                int iconCode = doc["icon"].as<int>(); 
-                
-                switch (iconCode) {
-                    case 50: weather.condition = "Sunny"; break;
-                    case 51: weather.condition = "Sunny Intervals"; break;
-                    case 53: weather.condition = "Cloudy"; break;
-                    case 54: weather.condition = "Light Rain"; break;
-                    case 55: weather.condition = "Rain"; break;
-                    case 56: weather.condition = "Thunderstorm"; break;
-                    default: weather.condition = "Fair"; break;
+                JsonArray iconArray = doc["icon"].as<JsonArray>();
+                if (iconArray.size() > 0) {
+                    int iconCode = iconArray[0].as<int>(); 
+                    
+                    switch (iconCode) {
+                        case 50: weather.condition = "Sunny"; break;
+                        case 51: weather.condition = "Sunny Intervals"; break;
+                        case 53: weather.condition = "Cloudy"; break;
+                        case 54: weather.condition = "Light Rain"; break;
+                        case 55: weather.condition = "Rain"; break;
+                        case 56: weather.condition = "Thunderstorm"; break;
+                        default: weather.condition = "Fair"; break;
+                    }
                 }
             }
         } else {
@@ -125,24 +129,47 @@ HKWeather getHKWeather() {
     return weather;
 }
 
+// ==========================================
+// HIGH-SPEED REAL-TIME MODIFIER CLOCK ENGINE (0ms DELAY)
+// ==========================================
 String getHKTime() {
-    // struct tm timeinfo;
-    // static char lastValidTime[32] = "Syncing..."; // Stores the last good time string
-    
-    // // Read the internal clock registers
-    // if (!getLocalTime(&timeinfo)) {
-    //     // REMOVED: Serial.println from here so it doesn't spam your loop 30 times a second
-    //     return String(lastValidTime); // Fallback to the last known valid clock state
-    // }
-    
-    // char timeBuffer[32];
-    // strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    
-    // // Save this current string as the new baseline fallback
-    // strncpy(lastValidTime, timeBuffer, sizeof(lastValidTime));
-    
-    // return String(timeBuffer);
-    return String("2024-06-01 12:00:00"); // Placeholder static time for testing without RTC setup
+    static char timeBuffer[128] = "Syncing Clock...";
+
+    if (!clockSynced) {
+        return String(timeBuffer);
+    }
+
+    // High-speed modifier accumulator (increments every 1000ms strictly)
+    if (millis() - lastClockUpdate >= 1000) {
+        lastClockUpdate += 1000; // Preserves leftover elapsed fractional intervals cleanly
+        
+        myClock.tm_sec++; 
+        
+        if (myClock.tm_sec >= 60) {
+            myClock.tm_sec = 0;
+            myClock.tm_min++; 
+            
+            if (myClock.tm_min >= 60) {
+                myClock.tm_min = 0;
+                myClock.tm_hour++; 
+                
+                if (myClock.tm_hour >= 24) {
+                    myClock.tm_hour = 0;
+                    myClock.tm_mday++; 
+                    
+                    // Normalize standard structural rules for cross-month boundary transitions cleanly
+                    time_t t = mktime(&myClock);
+                    struct tm* normalized = localtime(&t);
+                    if (normalized != NULL) {
+                        myClock = *normalized;
+                    }
+                }
+            }
+        }
+    }
+
+    //time buffer is static formatted, while myclock is raw
+    // Direct buffer layout output generation
+    strftime(timeBuffer, sizeof(timeBuffer), "%Y %m %d- %H:%M", &myClock);
+    return String(timeBuffer);
 }
-
-
