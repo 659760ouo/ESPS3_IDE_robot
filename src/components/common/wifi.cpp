@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "wifi.h"
 
-
+//change to the wifi your esp connect to, and make sure it's 2.4GHz since ESP32 doesn't support 5GHz wifi
 const char *ssid = "Tenda_wifi_2.4GHz";
 const char *password = "91297386";
 

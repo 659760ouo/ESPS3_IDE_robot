@@ -107,12 +107,40 @@ HKWeather getHKWeather() {
                     
                     switch (iconCode) {
                         case 50: weather.condition = "Sunny"; break;
-                        case 51: weather.condition = "Sunny Intervals"; break;
-                        case 53: weather.condition = "Cloudy"; break;
-                        case 54: weather.condition = "Light Rain"; break;
-                        case 55: weather.condition = "Rain"; break;
-                        case 56: weather.condition = "Thunderstorm"; break;
-                        default: weather.condition = "Fair"; break;
+                        case 51: weather.condition = "Sunny Periods"; break;
+                        case 52: weather.condition = "Sunny Intervals"; break;
+                        case 53: weather.condition = "Sunny Periods with showers"; break;
+                        case 54: weather.condition = "Sunny Intervals with showers"; break;
+                        
+                        case 60: weather.condition = "Cloudy"; break;
+                        case 61: weather.condition = "Overcast"; break;
+                        case 62: weather.condition = "Light Rain"; break;
+                        case 63: weather.condition = "Rain"; break;
+                        case 64: weather.condition = "Heavy Rain"; break;
+                        case 65: weather.condition = "Thunderstorm"; break;
+
+                        case 70: weather.condition = "Fine(night)"; break;
+                        case 71: weather.condition = "Fine(night)"; break;
+                        case 72: weather.condition = "Fine(night)"; break;
+                        case 73: weather.condition = "Fine(night)"; break;
+                        case 74: weather.condition = "Fine(night)"; break;
+                        case 75: weather.condition = "Fine(night)"; break;
+
+                        case 76: weather.condition = "Main_Cloudy"; break;
+                        case 77: weather.condition = "Main_Fine"; break;
+                        case 80: weather.condition = "Windy"; break;
+                        case 81: weather.condition = "Dry"; break;
+                        case 82: weather.condition = "Humid"; break;
+                        case 83: weather.condition = "Fog"; break;
+                        case 84: weather.condition = "Mist"; break;
+                        case 85: weather.condition = "Haze"; break;
+
+                        case 90: weather.condition = "Hot"; break;
+                        case 91: weather.condition = "Warm"; break;
+                        case 92: weather.condition = "Cool"; break;
+                        case 93: weather.condition = "Cold"; break;
+                        
+                        default: weather.condition = "Cloudy"; break;
                     }
                 }
             }

@@ -3,14 +3,27 @@ import re
 from PIL import Image
 
 def clean_variable_name(filename):
-    """Converts file names into valid, clean C++ variable identifiers."""
+    """Converts file names into valid, clean C++ variable identifiers.
+    
+    Modified to seamlessly align with HKO API condition string outputs.
+    """
     name = os.path.splitext(filename)[0] # Extract the filename core
+    
+    # Standardize spaces, dashes, and brackets into clean underscores
     name = name.lower()
+    name = name.replace("(", "_").replace(")", "_")
     name = re.sub(r'[^a-z0-9_]', '_', name)
+    
+    # Handle numeric edge cases
     if name.isdigit():
         name = "img_" + name
+        
+    # Ensure standard suffix array binding
     if not name.endswith("_png"):
         name += "_png"
+        
+    # Reduce consecutive underscores caused by punctuation replacement (e.g., "fine(night)" -> "fine_night__png")
+    name = re.sub(r'_+', '_', name)
     return name
 
 def generate_img_header(input_folder, output_file_path, target_size=(48, 48)):

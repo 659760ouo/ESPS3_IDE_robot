@@ -213,25 +213,57 @@ void animateEyes() {
 
 
 
-// Callback function to blit decompressed PNG lines straight into your canvas object
+
 int pngCanvasDecoderCallback(PNGDRAW *pDraw) {
-    uint16_t linePixelBuffer[240]; // Handles width limits safely up to your 240px wide screen
+    uint16_t linePixelBuffer[240]; 
+    uint8_t alphaMaskBuffer[240]; 
     
-    weather_png_decoder.getLineAsRGB565(pDraw, linePixelBuffer, PNG_RGB565_BIG_ENDIAN, 0xffffffff);
+    weather_png_decoder.getLineAsRGB565(pDraw, linePixelBuffer, PNG_RGB565_BIG_ENDIAN, 0);
     
-    for (int x = 0; x < pDraw->iWidth; x++) {
-        int currentX = target_draw_x + x;
-        int currentY = target_draw_y + pDraw->y;
-        
-        // Memory safety boundary checks
-        if (currentX >= 0 && currentX < 240 && currentY >= 0 && currentY < 240) {
-            canvas->drawPixel(currentX, currentY, linePixelBuffer[x]);
+    if (pDraw->iHasAlpha) {
+        weather_png_decoder.getAlphaMask(pDraw, alphaMaskBuffer, 128);
+    }
+
+    // 💡 FIXED: Your source images are exactly 48x48 pixels. 
+    // Replaced the non-existent pDraw->iHeight with the explicit literal size 48.
+    int sourceHeight = 48; 
+
+    // Fixed-point scaling ratio logic calculations
+    uint32_t scaleX = (pDraw->iWidth << 8) / 52;
+    uint32_t scaleY = (sourceHeight << 8) / 52;
+
+    // Calculate bounding row coordinates for mapping this 48px row onto a 52px target layout
+    int targetY_Start = (pDraw->y * 52) / sourceHeight;
+    int targetY_End = ((pDraw->y + 1) * 52) / sourceHeight;
+
+    // Extrude out row matrices sequentially to maintain image coherence
+    for (int outY = targetY_Start; outY < targetY_End; outY++) {
+        int currentY = target_draw_y + outY;
+
+        for (int outX = 0; outX < 52; outX++) {
+            // Project the target grid step index back to find the source asset pixel coordinates
+            int srcX = (outX * scaleX) >> 8;
+            if (srcX >= pDraw->iWidth) srcX = pDraw->iWidth - 1;
+
+            // Transparency mask layer safety filter evaluation
+            if (pDraw->iHasAlpha && alphaMaskBuffer[srcX] == 0) {
+                continue; 
+            }
+
+            int currentX = target_draw_x + outX;
+
+            // Absolute screen size safety array boundary checks
+            if (currentX >= 0 && currentX < 240 && currentY >= 0 && currentY < 240) {
+                canvas->drawPixel(currentX, currentY, linePixelBuffer[srcX]);
+            }
         }
     }
     return 1;
 }
 
-void drawWeatherDisplay(const char* city, int temp, const char* condition, int humidity) {
+
+// ====================================================================
+void drawWeatherDisplay(const char* city, int temp, const char* condition, int humidity, const char* hkUpdateTime) {
     if (canvas == NULL) return;
 
     digitalWrite(TFT_CS, LOW); 
@@ -245,56 +277,58 @@ void drawWeatherDisplay(const char* city, int temp, const char* condition, int h
     canvas->setTextSize(2);
     canvas->setTextColor(ST77XX_WHITE);
     int city_len = strlen(city);
-    int city_x = 120 - ((city_len * 12) / 2);
-    canvas->setCursor(city_x, 25);
+    canvas->setCursor(120 - ((city_len * 12) / 2), 25);
     canvas->println(city);
 
     // --- Weather Condition Text (Centered at Y=50) ---
     canvas->setTextSize(2);
     canvas->setTextColor(0x9CF3); 
     int cond_len = strlen(condition);
-    int cond_x = 120 - ((cond_len * 12) / 2);
-    canvas->setCursor(cond_x, 50);
+    canvas->setCursor(120 - ((cond_len * 12) / 2), 50);
     canvas->println(condition);
 
-    
-    // ====================================================================
-    const uint8_t* selectedPngArray = fair_png; // FIXED: Changed default fallback to match fair_png
-    int selectedPngSize = sizeof(fair_png);
+    // --- Update Time (Centered at Y=75) ---
+    canvas->setTextSize(1);
+    canvas->setTextColor(0x3DFE);
+    int time_len = strlen(hkUpdateTime);
+    canvas->setCursor(120 - ((time_len * 6) / 2), 75);
+    canvas->println(hkUpdateTime);
 
+    // --- MATCH ALL COMPILATION CASES ---
+    const uint8_t* selectedPngArray = cloudy_png; // Default fallback icon and size if no conditions match
+    int selectedPngSize = sizeof(cloudy_png);
     String condStr = String(condition);
     condStr.trim();
 
-    if (condStr == "Sunny") {
-        selectedPngArray = sunny_png;
-        selectedPngSize = sizeof(sunny_png);
-    } 
-    else if (condStr == "Cloudy") {
-        selectedPngArray = cloudy_png;
-        selectedPngSize = sizeof(cloudy_png);
-    } 
-    else if (condStr == "Rain" || condStr == "Raining") { // FIXED: Intercepts both names
-        selectedPngArray = raining_png;                 // FIXED: Links to raining_png
-        selectedPngSize = sizeof(raining_png);
-    } 
-    else if (condStr == "Thunderstorms" || condStr == "Thunderstorm") {
-        selectedPngArray = thunderstorm_png;             // FIXED: Links to thunderstorm_png
-        selectedPngSize = sizeof(thunderstorm_png);
-    } 
-    else if (condStr == "Light Rain") {
-        selectedPngArray = light_rain_png;
-        selectedPngSize = sizeof(light_rain_png);
-    } 
-    else if (condStr == "Sunny Intervals") {
-        selectedPngArray = sunny_interval_png;
-        selectedPngSize = sizeof(sunny_interval_png);
-    }
+    if (condStr == "Sunny") { selectedPngArray = sunny_png; selectedPngSize = sizeof(sunny_png); } 
+    else if (condStr == "Sunny Periods") { selectedPngArray = sunny_periods_png; selectedPngSize = sizeof(sunny_periods_png); } 
+    else if (condStr == "Sunny Intervals") { selectedPngArray = sunny_intervals_png; selectedPngSize = sizeof(sunny_intervals_png); } 
+    else if (condStr == "Sunny Periods with showers") { selectedPngArray = sunny_periods_with_showers_png; selectedPngSize = sizeof(sunny_periods_with_showers_png); } 
+    else if (condStr == "Sunny Intervals with showers") { selectedPngArray = sunny_intervals_with_showers_png; selectedPngSize = sizeof(sunny_intervals_with_showers_png); } 
+    else if (condStr == "Cloudy") { selectedPngArray = cloudy_png; selectedPngSize = sizeof(cloudy_png); } 
+    else if (condStr == "Overcast") { selectedPngArray = overcast_png; selectedPngSize = sizeof(overcast_png); } 
+    else if (condStr == "Light Rain") { selectedPngArray = light_rain_png; selectedPngSize = sizeof(light_rain_png); } 
+    else if (condStr == "Rain") { selectedPngArray = rain_png; selectedPngSize = sizeof(rain_png); } 
+    else if (condStr == "Heavy Rain") { selectedPngArray = heavy_rain_png; selectedPngSize = sizeof(heavy_rain_png); } 
+    else if (condStr == "Thunderstorm") { selectedPngArray = thunderstorm_png; selectedPngSize = sizeof(thunderstorm_png); } 
+    else if (condStr == "Fine(night)") { selectedPngArray = fine_night_png; selectedPngSize = sizeof(fine_night_png); } 
+    else if (condStr == "Main_Cloudy") { selectedPngArray = main_cloudy_png; selectedPngSize = sizeof(main_cloudy_png); } 
+    else if (condStr == "Main_Fine") { selectedPngArray = main_fine_png; selectedPngSize = sizeof(main_fine_png); } 
+    else if (condStr == "Windy") { selectedPngArray = windy_png; selectedPngSize = sizeof(windy_png); } 
+    else if (condStr == "Dry") { selectedPngArray = dry_png; selectedPngSize = sizeof(dry_png); } 
+    else if (condStr == "Humid") { selectedPngArray = humid_png; selectedPngSize = sizeof(humid_png); } 
+    else if (condStr == "Fog") { selectedPngArray = fog_png; selectedPngSize = sizeof(fog_png); } 
+    else if (condStr == "Mist") { selectedPngArray = mist_png; selectedPngSize = sizeof(mist_png); } 
+    else if (condStr == "Haze") { selectedPngArray = haze_png; selectedPngSize = sizeof(haze_png); } 
+    else if (condStr == "Hot") { selectedPngArray = hot_png; selectedPngSize = sizeof(hot_png); } 
+    else if (condStr == "Warm") { selectedPngArray = warm_png; selectedPngSize = sizeof(warm_png); } 
+    else if (condStr == "Cool") { selectedPngArray = cool_png; selectedPngSize = sizeof(cool_png); } 
+    else if (condStr == "Cold") { selectedPngArray = cold_png; selectedPngSize = sizeof(cold_png); }
 
-    // FIXED CENTERING MATH FOR 48x48 ASSSETS: 120 - (48 / 2) = 96
+    // Centering adjusted for Python script's 48x48 output: 120 - (48 / 2) = 96
     target_draw_x = 96; 
-    target_draw_y = 75; // Shifts layout upward slightly to make room for size 4 temp text
+    target_draw_y = 90; 
 
-    // Run decompression straight from memory mapped flash array paths into the canvas structure
     int result = weather_png_decoder.openRAM((uint8_t *)selectedPngArray, selectedPngSize, pngCanvasDecoderCallback);
     if (result == PNG_SUCCESS) {
         weather_png_decoder.decode(NULL, 0);
@@ -303,7 +337,7 @@ void drawWeatherDisplay(const char* city, int temp, const char* condition, int h
         Serial.printf("PNG Decompress Error: %d\n", result);
     }
 
-    // --- Temperature Readout (Centered at Y=135) ---
+    // --- Temperature Readout (Centered at Y=145 for size 4 font) ---
     canvas->setTextSize(4);
     canvas->setTextColor(0xFCE0); 
     
@@ -311,26 +345,136 @@ void drawWeatherDisplay(const char* city, int temp, const char* condition, int h
     snprintf(temp_str, sizeof(temp_str), "%d C", temp); 
     int temp_len = strlen(temp_str);
     int temp_x = 120 - ((temp_len * 24) / 2); 
-    canvas->setCursor(temp_x, 135); 
+    canvas->setCursor(temp_x, 145); 
     canvas->print(temp_str);
     
     int degree_x = temp_x + ((temp_len - 1) * 24) - 8;
-    canvas->drawCircle(degree_x, 135, 3, 0xFCE0);
+    canvas->drawCircle(degree_x, 145, 3, 0xFCE0);
 
-    // --- Humidity Readout (Centered at Y=185) ---
+    // --- Humidity Readout (Centered at Y=190) ---
     canvas->setTextSize(2);
     canvas->setTextColor(0x3DFE); 
     
     char hum_str[16];
     snprintf(hum_str, sizeof(hum_str), "Hum: %d%%", humidity);
     int hum_len = strlen(hum_str);
-    int hum_x = 120 - ((hum_len * 12) / 2);
-    canvas->setCursor(hum_x, 185);
+    canvas->setCursor(120 - ((hum_len * 12) / 2), 190);
     canvas->print(hum_str);
 
-    // Push the composite image down to physical hardware in one blast
+    // Push the final compound image down to hardware instantly via PSRAM
     tft.drawRGBBitmap(0, 0, canvas->getBuffer(), 240, 240);
     digitalWrite(TFT_BL, HIGH); 
 }
 
+
+//Home screen menu selection global variable (0 to 3 index for the 4 widgets)
+// Global tracker variable to manage which widget is currently highlighted/selected (0 to 3)
+int currentMenuSelection = 0; 
+
+
+// ====================================================================
+void onCameraWidgetClick() {
+    // [Template] 
+    Serial.println("[Menu Action] Camera Widget Activated.");
+}
+
+void onWeatherWidgetClick() {
+    // [Template] 
+    Serial.println("[Menu Action] Weather Widget Activated.");
+}
+
+void onIoTWidgetClick() {
+    // [Template] 
+    Serial.println("[Menu Action] IoT Widget Activated.");
+}
+
+void onSettingsWidgetClick() {
+    // [Template] 
+    Serial.println("[Menu Action] Settings Widget Activated.");
+}
+
+// ====================================================================
+// 🎨 HELPER FUNCTION: DRAW A SINGLE WIDGET CELL WITH HIGHLIGHT FRAME
+// ====================================================================
+void drawMenuWidget(int id, const char* label, uint16_t iconColor, int centerX, int centerY) {
+    // Determine boundary coordinates based on widget ID mapping
+    int startX = (id % 2) * 120;
+    int startY = (id / 2) * 120;
+
+    // 💡 HIGHLIGHT FILTER: If this specific widget is selected, draw a vibrant thick border
+    if (id == currentMenuSelection) {
+        canvas->drawRect(startX + 2, startY + 2, 116, 116, 0xFCE0); // Gold/Orange selection box
+        canvas->drawRect(startX + 3, startY + 3, 114, 114, 0xFCE0); // Double-thickness border
+    } else {
+        canvas->drawRect(startX + 4, startY + 4, 112, 112, 0x2104); // Faint decorative dark gray grid frame
+    }
+
+    // 💡 PLACEHOLDER GRAPHIC: Draw a decorative colored geometric block as a proxy icon
+    // (This ensures your layout looks professional before you convert your binary PNG arrays)
+    canvas->fillRect(centerX - 16, centerY - 25, 32, 32, iconColor);
+    canvas->drawRect(centerX - 16, centerY - 25, 32, 32, ST77XX_WHITE);
+
+    // --- Widget Label Text (Auto-Centered horizontally below the icon space) ---
+    canvas->setTextSize(1);
+    canvas->setTextColor(ST77XX_WHITE);
+    int label_len = strlen(label);
+    int text_x = centerX - ((label_len * 6) / 2); // Font size 1 characters are exactly 6px wide
+    canvas->setCursor(text_x, centerY + 18);
+    canvas->print(label);
+}
+
+// ====================================================================
+// 🚀 MAIN MAIN-HOME RENDERING INTERFACE
+// ====================================================================
+void drawHomeMenuDisplay() {
+    if (canvas == NULL) return;
+
+    digitalWrite(TFT_CS, LOW); 
+    canvas->fillScreen(ST77XX_BLACK); // Clear layout canvas space using premium PSRAM blocks
+
+    // Draw grid separation lines to anchor the 2x2 dashboard visual style
+    canvas->drawFastHLine(0, 120, 240, 0x10A2); // Horizontal cross splitter line
+    canvas->drawFastVLine(120, 0, 240, 0x10A2); // Vertical cross splitter line
+
+    // Render Widget 0: Camera (Top-Left, Center at 60, 60)
+    drawMenuWidget(0, "CAMERA", 0xF800, 60, 60); // Red thematic indicator color
+
+    // Render Widget 1: Weather (Top-Right, Center at 180, 60)
+    drawMenuWidget(1, "WEATHER", 0x3DFE, 180, 60); // Cyan thematic indicator color
+
+    // Render Widget 2: IOT Matrix (Bottom-Left, Center at 60, 180)
+    drawMenuWidget(2, "IOT NODE", 0x07E0, 60, 180); // Green thematic indicator color
+
+    // Render Widget 3: Device Settings (Bottom-Right, Center at 180, 180)
+    drawMenuWidget(3, "SETTINGS", 0x9CF3, 180, 180); // Purple/Gray thematic indicator color
+
+    // Blast the completed 2x2 matrix dashboard composition layer straight onto display hardware
+    tft.drawRGBBitmap(0, 0, canvas->getBuffer(), 240, 240);
+    digitalWrite(TFT_BL, HIGH); 
+}
+
+// ====================================================================
+// 🎮 MENU NAVIGATION CONTROL CONTROLLER
+// ====================================================================
+void navigateHomeMenu(int direction) {
+    // Direction: 1 = Next Item, -1 = Previous Item
+    currentMenuSelection += direction;
+    
+    // Boundary roll-over defense loops (0 to 3 index space constraints)
+    if (currentMenuSelection > 3) currentMenuSelection = 0;
+    if (currentMenuSelection < 0) currentMenuSelection = 3;
+    
+    // Instantly update layout state graphics inside your PSRAM array
+    drawHomeMenuDisplay();
+}
+
+void executeSelectedMenuWidget() {
+    // Route execution matrix cleanly based on verified menu state locks
+    switch (currentMenuSelection) {
+        case 0: onCameraWidgetClick(); break;
+        case 1: onWeatherWidgetClick(); break;
+        case 2: onIoTWidgetClick();    break;
+        case 3: onSettingsWidgetClick(); break;
+    }
+}
 

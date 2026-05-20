@@ -20,7 +20,7 @@ String lastDisplayedTime = "";
 String lastDisplayedWeather = "";
 
 // Declaration of your external canvas rendering engine function block
-void drawWeatherDisplay(const char* city, int temp, const char* condition, int humidity);
+void drawWeatherDisplay(const char* city, int temp, const char* condition, int humidity, const char* updateTime);
 
 void weather_page_lcd() {
     // 1. Fetch live API updates from the Hong Kong Observatory every 10 minutes
@@ -51,6 +51,6 @@ void weather_page_lcd() {
 
         // Render data elements instantly via your off-screen drawing engine layout
         // This takes care of clearing backgrounds, mapping PNG icons, and running text buffers
-        drawWeatherDisplay("Yuen Long", intTemp, hkCondition, intHumidity);
+        drawWeatherDisplay("Yuen Long", intTemp, hkCondition, intHumidity, hkUpdateTime);
     }
 }
